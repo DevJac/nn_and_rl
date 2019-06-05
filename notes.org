@@ -13,6 +13,7 @@ The value of a state is the reward it can receive immediately, plus the value of
 You can recursively update the value function. This "spreads the value around" after many iterations.
 
 I suspect this may provided added stability to a neural networks based agent as well. I will try it.
+* TODO Note regularization methods, L1 and L2
 * Idea: Learn State Transitions
 Can we train a model to predict state transitions? That could serve as a model of the environment. The value / policy could then be updated using the simulated environment rather than the real environment.
 
