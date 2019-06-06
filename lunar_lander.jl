@@ -6,6 +6,8 @@ using ProgressMeter
 using PyCall
 import Reinforce: action
 
+SARS_TUPLE = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}
+
 const env = GymEnv(:LunarLander, :v2)
 
 const actions = 0:3
@@ -55,7 +57,7 @@ function action(policy::QPolicy, r, s, A)
 end
 
 function run_episodes(n_episodes, policy; close_env=true)
-    sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}[]
+    sars = SARS_TUPLE[]
     rewards = Float64[]
     for episode in 1:n_episodes
         reward = run_episode(env, policy) do (s, a, r, s_next)
@@ -70,7 +72,7 @@ function run_episodes(n_episodes, policy; close_env=true)
     sars, rewards
 end
 
-function to_q_x(sars::AbstractArray{Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}})
+function to_q_x(sars::AbstractArray{SARS_TUPLE})
     to_q_x((s, a) for (s, a, _, _, _) in sars)
 end
 
@@ -91,7 +93,7 @@ end
 
 V(s) = maximum(action_values(s))
 
-function to_q_y(sars::AbstractArray{Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}})
+function to_q_y(sars::AbstractArray{SARS_TUPLE})
     to_q_y((r, s_next, f) for (_, _, r, s_next, f) in sars)
 end
 
@@ -135,7 +137,7 @@ function run()
     if isfile("q_model.bson")
         load_model()
     end
-    sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}[]
+    sars = SARS_TUPLE[]
     rewards = Float64[]
     for i in 1:1_000_000
         new_sars, reward = run_episodes(1, QPolicy(max(0.1, 1-i/200)), close_env=false)
