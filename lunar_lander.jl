@@ -10,13 +10,15 @@ const env = GymEnv(:LunarLander, :v2)
 
 const actions = 0:3
 
-const hidden_layer_size = 2_000
+const hidden_layer_size = 400
 
 const q_model = Chain(
     Dense(8 + 1, hidden_layer_size, leakyrelu),
     Dense(hidden_layer_size, 1, leakyrelu))
 
-loss(x, y) = Flux.mse(q_model(x), y) + 0.001 * sum(StatsBase.norm, Flux.params(q_model))
+function loss(x, y; regularize=true)
+    Flux.mse(q_model(x), y) + (regularize ? 0.001 * sum(StatsBase.norm, Flux.params(q_model)) : 0)
+end
 
 optimizer = NADAM()
 
@@ -53,11 +55,11 @@ function action(policy::QPolicy, r, s, A)
 end
 
 function run_episodes(n_episodes, policy; close_env=true)
-    sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1}}[]
+    sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}[]
     rewards = Float64[]
     for episode in 1:n_episodes
         reward = run_episode(env, policy) do (s, a, r, s_next)
-            push!(sars, (s, a, r, s_next))
+            push!(sars, (s, a, r, s_next, finished(env, s)))
             render(env)
         end
         push!(rewards, reward)
@@ -68,8 +70,8 @@ function run_episodes(n_episodes, policy; close_env=true)
     sars, rewards
 end
 
-function to_q_x(sars::AbstractArray{Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1}}})
-    to_q_x((s, a) for (s, a, _, _) in sars)
+function to_q_x(sars::AbstractArray{Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}})
+    to_q_x((s, a) for (s, a, _, _, _) in sars)
 end
 
 function to_q_x(sas)
@@ -89,13 +91,17 @@ end
 
 V(s) = maximum(action_values(s))
 
-function to_q_y(sars::AbstractArray{Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1}}})
-    to_q_y((r, s_next) for (_, _, r, s_next) in sars)
+function to_q_y(sars::AbstractArray{Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}})
+    to_q_y((r, s_next, f) for (_, _, r, s_next, f) in sars)
 end
 
-function to_q_y(rss)
-    map(rss) do (r, s_next)
-        r + 0.9 * V(s_next)
+function to_q_y(rsfs)
+    map(rsfs) do (r, s_next, f)
+        if f
+            r
+        else
+            r + 0.99 * V(s_next)
+        end
     end
 end
 
@@ -105,13 +111,13 @@ function sars_losses(sars)
     map(sars) do sar
         x = to_q_x([sar])
         y = to_q_y([sar])
-        loss(x, y)
+        loss(x, y, regularize=false)
     end
 end
 
 function trim_memories(sars)
     to_remove = Set(sortperm(sars_losses(sars)[1:round(Int, end/2)])[1:round(Int, end/2)])
-    [sars[i] for i in 1:length(sars) if !in(i, to_remove)]
+    [sars[i] for i in 1:length(sars) if !in(i, to_remove) && rand() < 0.9]
 end
 
 function save_model()
@@ -129,13 +135,13 @@ function run()
     if isfile("q_model.bson")
         load_model()
     end
-    sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1}}[]
+    sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}[]
     for i in 1:1_000_000
-        new_sars, rewards = run_episodes(10, QPolicy(0.2), close_env=false)
-        sars = trim_memories(vcat(sars, new_sars))
+        new_sars, rewards = run_episodes(1, QPolicy(0.2), close_env=false)
+        sars = truncate(vcat(sars, new_sars), 10_000)
         pre_loss = sum(sars_losses(sars)) / length(sars)
         for _ in 1:10
-            train(sars, 10)
+            train(StatsBase.sample(sars, 200), 10)
         end
         save_model()
         post_loss = sum(sars_losses(sars)) / length(sars)
