@@ -1,3 +1,4 @@
+using BSON: @load, @save
 using Flux
 using OpenAIGym
 using Printf: @printf
@@ -113,15 +114,30 @@ function trim_memories(sars)
     [sars[i] for i in 1:length(sars) if !in(i, to_remove)]
 end
 
+function save_model()
+    q_model_local = q_model
+    @save "q_model.bson.temp" q_model_local
+    mv("q_model.bson.temp", "q_model.bson", force=true)
+end
+
+function load_model()
+    @load "q_model.bson" q_model_local
+    Flux.loadparams!(q_model, Flux.params(q_model_local))
+end
+
 function run()
+    if isfile("q_model.bson")
+        load_model()
+    end
     sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1}}[]
-    for i in 1:1000
+    for i in 1:1_000_000
         new_sars, rewards = run_episodes(10, QPolicy(0.2), close_env=false)
         sars = trim_memories(vcat(sars, new_sars))
         pre_loss = sum(sars_losses(sars)) / length(sars)
         for _ in 1:10
             train(sars, 10)
         end
+        save_model()
         post_loss = sum(sars_losses(sars)) / length(sars)
         @printf("%4d - Memory length: %4d    Average rewards: %8.2f    Loss: %4.2f -> %4.2f\n",
                 i, length(sars), sum(rewards) / length(rewards), pre_loss, post_loss)
