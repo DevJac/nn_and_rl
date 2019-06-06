@@ -1,6 +1,7 @@
 using Flux
 using OpenAIGym
 using Printf: @printf
+using ProgressMeter
 using PyCall
 import Reinforce: action
 
@@ -8,11 +9,11 @@ const env = GymEnv(:LunarLander, :v2)
 
 const actions = 0:3
 
-const hidden_layer_size = 400
+const hidden_layer_size = 2_000
 
 const q_model = Chain(
-    Dense(8 + 1, hidden_layer_size, relu),
-    Dense(hidden_layer_size, 1))
+    Dense(8 + 1, hidden_layer_size, leakyrelu),
+    Dense(hidden_layer_size, 1, leakyrelu))
 
 loss(x, y) = Flux.mse(q_model(x), y) + 0.001 * sum(StatsBase.norm, Flux.params(q_model))
 
@@ -50,7 +51,7 @@ function action(policy::QPolicy, r, s, A)
     argmax(action_values(s)) - 1
 end
 
-function run_episodes(n_episodes, policy)
+function run_episodes(n_episodes, policy; close_env=true)
     sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1}}[]
     rewards = Float64[]
     for episode in 1:n_episodes
@@ -60,7 +61,9 @@ function run_episodes(n_episodes, policy)
         end
         push!(rewards, reward)
     end
-    close(env)
+    if close_env
+        close(env)
+    end
     sars, rewards
 end
 
@@ -97,15 +100,31 @@ end
 
 truncate(a, n) = a[max(1, end-n+1):end]
 
+function sars_losses(sars)
+    map(sars) do sar
+        x = to_q_x([sar])
+        y = to_q_y([sar])
+        loss(x, y)
+    end
+end
+
+function trim_memories(sars)
+    to_remove = Set(sortperm(sars_losses(sars)[1:round(Int, end/2)])[1:round(Int, end/2)])
+    [sars[i] for i in 1:length(sars) if !in(i, to_remove)]
+end
+
 function run()
     sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1}}[]
     for i in 1:1000
-        new_sars, rewards = run_episodes(10, QPolicy(0.2))
-        sars = truncate(vcat(sars, new_sars), 1000)
-        @printf("Average rewards: %8.2f\n", sum(rewards) / length(rewards))
+        new_sars, rewards = run_episodes(10, QPolicy(0.2), close_env=false)
+        sars = trim_memories(vcat(sars, new_sars))
+        pre_loss = sum(sars_losses(sars)) / length(sars)
         for _ in 1:10
             train(sars, 10)
         end
+        post_loss = sum(sars_losses(sars)) / length(sars)
+        @printf("%4d - Memory length: %4d    Average rewards: %8.2f    Loss: %4.2f -> %4.2f\n",
+                i, length(sars), sum(rewards) / length(rewards), pre_loss, post_loss)
     end
 end
 
