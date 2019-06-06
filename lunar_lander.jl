@@ -136,8 +136,11 @@ function run()
         load_model()
     end
     sars = Tuple{PyCall.PyArray{Float32,1},Int64,Float64,PyCall.PyArray{Float32,1},Bool}[]
+    rewards = Float64[]
     for i in 1:1_000_000
-        new_sars, rewards = run_episodes(1, QPolicy(0.2), close_env=false)
+        new_sars, reward = run_episodes(1, QPolicy(max(0.1, 1-i/200)), close_env=false)
+        push!(rewards, reward[1])
+        rewards = truncate(rewards, 100)
         sars = truncate(vcat(sars, new_sars), 10_000)
         pre_loss = sum(sars_losses(sars)) / length(sars)
         for _ in 1:10
