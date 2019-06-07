@@ -131,9 +131,10 @@ function run(log=false, render_env=false)
     losses_size = 100
     losses = Float64[]
     training_sample_size = 100
-    episodes_per_cycle = 10
+    episodes_per_cycle = 1
     training_epochs_per_cycle = 10
-    for learning_cycle in 1:300
+    learning_cycles = 3_000
+    for learning_cycle in 1:learning_cycles
         learning_cycle_output = @sprintf("%4d - ", learning_cycle)
         print(learning_cycle_output)
         new_sarsf, new_rewards = run_episodes(episodes_per_cycle, policy, render_env=render_env)
