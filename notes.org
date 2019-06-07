@@ -18,3 +18,6 @@ I suspect this may provided added stability to a neural networks based agent as 
 Can we train a model to predict state transitions? That could serve as a model of the environment. The value / policy could then be updated using the simulated environment rather than the real environment.
 
 This would probably have little value in virtual environment, like OpenAI Gym, because the environments are already simulated, so you mine as well use the perfectly simulated environment you already have.
+* Observations
+** Random Policy
+A random policy averages about -180 reward per episode.

@@ -32,9 +32,17 @@ struct SARSF
     f :: Bool
 end
 
-struct Policy <: AbstractPolicy end
-function action(policy::Policy, s, r, A)
-    rand(A)
+struct Policy <: AbstractPolicy
+    q_model
+    epsilon
+end
+
+function action(policy::Policy, r, s, A)
+    if rand() < policy.epsilon
+        rand(A)
+    else
+        argmax(action_values(policy.q_model, s)) - 1
+    end
 end
 
 function action_values(q_model, s)
@@ -115,6 +123,7 @@ function run(log=false, render_env=false)
         q_model = make_q_model()
     end
     optimizer = NADAM()
+    policy = Policy(q_model, 0.2)
     memory_size = 10_000
     memory = SARSF[]
     episode_rewards_size = 100
@@ -125,7 +134,7 @@ function run(log=false, render_env=false)
     for learning_cycle in 1:300
         learning_cycle_output = @sprintf("%4d - ", learning_cycle)
         print(learning_cycle_output)
-        new_sarsf, new_rewards = run_episodes(episodes_per_cycle, Policy(), render_env=render_env)
+        new_sarsf, new_rewards = run_episodes(episodes_per_cycle, policy, render_env=render_env)
         memory = truncate(vcat(new_sarsf, memory), memory_size)
         episode_rewards = truncate(vcat(new_rewards, episode_rewards), episode_rewards_size)
         training_sample = sample(memory, training_sample_size)
