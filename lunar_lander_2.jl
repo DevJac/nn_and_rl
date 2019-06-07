@@ -165,6 +165,7 @@ end  # module end
 
 using ArgParse
 using Logging
+using Flux  # This needs to be here to work around a BSON bug.
 if !isinteractive()
     settings = ArgParseSettings()
     @add_arg_table settings begin
