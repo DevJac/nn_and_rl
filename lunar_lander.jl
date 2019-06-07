@@ -12,10 +12,13 @@ const env = GymEnv(:LunarLander, :v2)
 
 const actions = 0:3
 
-const hidden_layer_size = 400
+const hidden_layer_size = 200
 
 const q_model = Chain(
     Dense(8 + 1, hidden_layer_size, leakyrelu),
+    Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
+    Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
+    Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
     Dense(hidden_layer_size, 1, leakyrelu))
 
 function loss(x, y; regularize=true)
@@ -51,9 +54,10 @@ struct QPolicy <: AbstractPolicy
 end
 function action(policy::QPolicy, r, s, A)
     if rand() < policy.e
-        return rand(actions)
+        return rand([0, 1, 2, 2, 3])
     end
-    argmax(action_values(s)) - 1
+    println(action_values(s))
+    argmax(action_values(s, fuzz=true)) - 1
 end
 
 function run_episodes(n_episodes, policy; close_env=true)
@@ -61,7 +65,15 @@ function run_episodes(n_episodes, policy; close_env=true)
     rewards = Float64[]
     for episode in 1:n_episodes
         reward = run_episode(env, policy) do (s, a, r, s_next)
-            push!(sars, (s, a, r, s_next, finished(env, s)))
+            done = finished(env)
+            if done && r == -100
+                r -= abs(s[2]) * 10
+                r -= abs(s[3]) * 10
+                r -= abs(s[4]) * 10
+                r -= abs(s[6]) * 10
+                @printf("       Discouraging crash: %2.2f\n", r + 100)
+            end
+            push!(sars, (s, a, r, s_next, done))
             render(env)
         end
         push!(rewards, reward)
@@ -85,24 +97,24 @@ function to_q_x(sas)
     hcat(xs...)
 end
 
-function action_values(s)
+function action_values(s; fuzz=false)
     map(actions) do a
-        q_model(to_q_x([(s, a)]))[1].data
+        q_model(to_q_x([(s, a)]))[1].data + (fuzz ? rand() : 0)
     end
 end
 
 V(s) = maximum(action_values(s))
 
 function to_q_y(sars::AbstractArray{SARS_TUPLE})
-    to_q_y((r, s_next, f) for (_, _, r, s_next, f) in sars)
+    to_q_y((a, r, s_next, f) for (_, a, r, s_next, f) in sars)
 end
 
-function to_q_y(rsfs)
-    map(rsfs) do (r, s_next, f)
+function to_q_y(arsfs)
+    map(arsfs) do (a, r, s_next, f)
         if f
             r
         else
-            r + 0.99 * V(s_next)
+            r + 0.9 * q_model(to_q_x([(s_next, a)]))[1].data
         end
     end
 end
@@ -140,14 +152,12 @@ function run()
     sars = SARS_TUPLE[]
     rewards = Float64[]
     for i in 1:1_000_000
-        new_sars, reward = run_episodes(1, QPolicy(max(0.1, 1-i/200)), close_env=false)
+        new_sars, reward = run_episodes(1, QPolicy(max(0.1, 1-i/50)), close_env=false)
         push!(rewards, reward[1])
         rewards = truncate(rewards, 100)
         sars = truncate(vcat(sars, new_sars), 10_000)
         pre_loss = sum(sars_losses(sars)) / length(sars)
-        for _ in 1:10
-            train(StatsBase.sample(sars, 200), 10)
-        end
+        train(StatsBase.sample(sars, 100), 50)
         save_model()
         post_loss = sum(sars_losses(sars)) / length(sars)
         @printf("%4d - Memory length: %4d    Average rewards: %8.2f    Loss: %4.2f -> %4.2f\n",
