@@ -128,6 +128,8 @@ function run(log=false, render_env=false)
     memory = SARSF[]
     episode_rewards_size = 100
     episode_rewards = Float64[]
+    losses_size = 100
+    losses = Float64[]
     training_sample_size = 100
     episodes_per_cycle = 10
     training_epochs_per_cycle = 10
@@ -140,15 +142,18 @@ function run(log=false, render_env=false)
         training_sample = sample(memory, training_sample_size)
         training_sample_x = to_x(training_sample)
         pre_training_loss = loss(q_model, training_sample_x, to_y(q_model, training_sample))
+        pushfirst!(losses, pre_training_loss.data)
+        losses = truncate(losses, losses_size)
         train(q_model, optimizer, training_sample, training_epochs_per_cycle)
         @save q_model_file q_model
         post_training_loss = loss(q_model, training_sample_x, to_y(q_model, training_sample))
         metrics_output = @sprintf(
-            "Average reward: %4.3f    Memory Length: %5d    Loss: %6.3f -> %6.3f",
+            "Average reward: %4.3f    Memory Length: %5d    Loss: %6.3f -> %6.3f    Average loss: %6.3f",
             mean(episode_rewards),
             length(memory),
             pre_training_loss / 1_000,
-            post_training_loss / 1_000)
+            post_training_loss / 1_000,
+            mean(losses) / 1_000)
         println(metrics_output)
         if log
             @info learning_cycle_output * metrics_output
