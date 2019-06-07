@@ -1,5 +1,6 @@
 module LunarLander2
 
+using BSON: @load, @save
 using Flux
 using Logging
 using OpenAIGym
@@ -88,13 +89,15 @@ function train(q_model, optimizer, sarsf, epochs)
     end
 end
 
-function run_episodes(n_episodes, policy)
+function run_episodes(n_episodes, policy; render_env=true)
     sarsf = SARSF[]
     episode_rewards = Float64[]
     for episode in 1:n_episodes
         episode_reward = run_episode(env, policy) do (s, a, r, s_next)
             push!(sarsf, SARSF(s, a, r, s_next, finished(env)))
-            render(env)
+            if render_env
+                render(env)
+            end
         end
         push!(episode_rewards, episode_reward)
     end
@@ -103,8 +106,14 @@ end
 
 truncate(a, n) = a[1:min(n, end)]
 
+const q_model_file = "q_model.bson"
+
 function run()
-    q_model = make_q_model()
+    if isfile(q_model_file)
+        @load q_model_file q_model
+    else
+        q_model = make_q_model()
+    end
     optimizer = NADAM()
     memory_size = 10_000
     memory = SARSF[]
@@ -116,13 +125,14 @@ function run()
     for learning_cycle in 1:300
         learning_cycle_output = @sprintf("%4d - ", learning_cycle)
         print(learning_cycle_output)
-        new_sarsf, new_rewards = run_episodes(episodes_per_cycle, Policy())
+        new_sarsf, new_rewards = run_episodes(episodes_per_cycle, Policy(), render_env = length(ARGS) > 0 && ARGS[1] == "--render")
         memory = truncate(vcat(new_sarsf, memory), memory_size)
         episode_rewards = truncate(vcat(new_rewards, episode_rewards), episode_rewards_size)
         training_sample = sample(memory, training_sample_size)
         training_sample_x = to_x(training_sample)
         pre_training_loss = loss(q_model, training_sample_x, to_y(q_model, training_sample))
         train(q_model, optimizer, training_sample, training_epochs_per_cycle)
+        @save q_model_file q_model
         post_training_loss = loss(q_model, training_sample_x, to_y(q_model, training_sample))
         metrics_output = @sprintf(
             "Average reward: %4.3f    Memory Length: %5d    Loss: %6.3f -> %6.3f",
@@ -140,7 +150,7 @@ end  # module end
 if !isinteractive()
     using Logging
     if length(ARGS) > 0
-        global_logger(SimpleLogger(open(ARGS[1], "a"), Logging.Debug))
+        global_logger(SimpleLogger(open(ARGS[end], "a"), Logging.Debug))
     end
     LunarLander2.run()
 end
