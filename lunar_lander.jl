@@ -18,8 +18,7 @@ const q_model = Chain(
     Dense(8 + 1, hidden_layer_size, leakyrelu),
     Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
     Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
-    Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
-    Dense(hidden_layer_size, 1, leakyrelu))
+    Dense(hidden_layer_size, 1))
 
 function loss(x, y; regularize=true)
     Flux.mse(q_model(x), y) + (regularize ? 0.001 * sum(StatsBase.norm, Flux.params(q_model)) : 0)
@@ -56,7 +55,6 @@ function action(policy::QPolicy, r, s, A)
     if rand() < policy.e
         return rand([0, 1, 2, 2, 3])
     end
-    println(action_values(s))
     argmax(action_values(s, fuzz=true)) - 1
 end
 
