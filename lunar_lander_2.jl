@@ -149,7 +149,7 @@ function run(log=false, render_env=false)
         @save q_model_file q_model
         post_training_loss = loss(q_model, training_sample_x, to_y(q_model, training_sample))
         metrics_output = @sprintf(
-            "Average reward: %4.3f    Memory Length: %5d    Loss: %6.3f -> %6.3f    Average loss: %6.3f",
+            "Average reward: %8.3f    Memory Length: %5d    Loss: %6.3f -> %6.3f    Average loss: %6.3f",
             mean(episode_rewards),
             length(memory),
             pre_training_loss / 1_000,
