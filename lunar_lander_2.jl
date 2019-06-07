@@ -108,7 +108,7 @@ truncate(a, n) = a[1:min(n, end)]
 
 const q_model_file = "q_model.bson"
 
-function run()
+function run(log=false, render_env=false)
     if isfile(q_model_file)
         @load q_model_file q_model
     else
@@ -125,7 +125,7 @@ function run()
     for learning_cycle in 1:300
         learning_cycle_output = @sprintf("%4d - ", learning_cycle)
         print(learning_cycle_output)
-        new_sarsf, new_rewards = run_episodes(episodes_per_cycle, Policy(), render_env = length(ARGS) > 0 && ARGS[1] == "--render")
+        new_sarsf, new_rewards = run_episodes(episodes_per_cycle, Policy(), render_env=render_env)
         memory = truncate(vcat(new_sarsf, memory), memory_size)
         episode_rewards = truncate(vcat(new_rewards, episode_rewards), episode_rewards_size)
         training_sample = sample(memory, training_sample_size)
@@ -141,16 +141,29 @@ function run()
             pre_training_loss / 1_000,
             post_training_loss / 1_000)
         println(metrics_output)
-        @info learning_cycle_output * metrics_output
+        if log
+            @info learning_cycle_output * metrics_output
+        end
     end
 end
 
 end  # module end
 
+using ArgParse
+using Logging
 if !isinteractive()
-    using Logging
-    if length(ARGS) > 0
-        global_logger(SimpleLogger(open(ARGS[end], "a"), Logging.Debug))
+    settings = ArgParseSettings()
+    @add_arg_table settings begin
+        "--render"
+            action = :store_true
+        "log_file"
+            required = false
     end
-    LunarLander2.run()
+    args = parse_args(ARGS, settings)
+    if !isnothing(args["log_file"])
+        global_logger(SimpleLogger(open(args["log_file"], "a"), Logging.Debug))
+    else
+        global_logger(NullLogger())
+    end
+    LunarLander2.run(true, args["render"])
 end
