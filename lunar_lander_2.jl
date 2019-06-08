@@ -12,11 +12,12 @@ const env = GymEnv(:LunarLander, :v2)
 
 const actions = 0:3
 
-const hidden_layer_size = 100
+const hidden_layer_size = 200
 
 function make_q_model()
     Chain(
         Dense(8 + 1, hidden_layer_size, leakyrelu),
+        Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
         Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
         Dense(hidden_layer_size, 1))
 end
@@ -124,15 +125,15 @@ function run(log=false, render_env=false)
     end
     optimizer = NADAM()
     policy = Policy(q_model, 0.2)
-    memory_size = 10_000
+    memory_size = 20_000
     memory = SARSF[]
     episode_rewards_size = 100
     episode_rewards = Float64[]
     losses_size = 100
     losses = Float64[]
-    training_sample_size = 100
+    training_sample_size = 200
     episodes_per_cycle = 1
-    training_epochs_per_cycle = 10
+    training_epochs_per_cycle = 100
     learning_cycles = 3_000
     for learning_cycle in 1:learning_cycles
         learning_cycle_output = @sprintf("%4d - ", learning_cycle)
