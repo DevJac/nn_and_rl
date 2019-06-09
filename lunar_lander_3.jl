@@ -35,10 +35,10 @@ struct SARS
 end
 
 function loss(p_model, sars)
-    # This formula is not intuitive to me, be watchful of bugs with this formula.
+    average_q = mean(sars.q for sars in sars)
     -sum(
         map(sars) do sars
-            sars.q * log(p_model(sars.s)[sars.a + 1])
+            (sars.q - average_q) * log(p_model(sars.s)[sars.a + 1])
         end
     )
 end
@@ -65,13 +65,13 @@ function run_episodes(n_episodes, policy; render_env=true, discount_factor=0.9)
     episode_rewards = Float32[]
     for episode in 1:n_episodes
         episode_sars = []
-        episode_reward = run_episode(env, policy) do (s, a, r, s_next)
+        run_episode(env, policy) do (s, a, r, s_next)
             push!(episode_sars, (convert(Array, s), a, r, convert(Array, s_next), finished(env)))
             if render_env
                 render(env)
             end
         end
-        push!(episode_rewards, episode_reward)
+        push!(episode_rewards, sum(r for (_, _, r, _, _) in episode_sars))
         append!(all_sars, add_q_to_sars(episode_sars))
     end
     all_sars, episode_rewards
@@ -92,17 +92,17 @@ function run()
     policy = Policy(p_model)
     rewards = Float32[]
     losses = Float32[]
-    for cycle in 1:30
+    for cycle in 1:3_000
         @printf("%4d - ", cycle)
-        sars, new_rewards = run_episodes(10, policy)
+        sars, new_rewards = run_episodes(1, policy, render_env=cycle % 100 == 0)
         rewards = truncate(vcat(new_rewards, rewards), 100)
         pre_training_loss = loss(p_model, sars)
         pushfirst!(losses, pre_training_loss.data)
         losses = truncate(losses, 100)
-        train(p_model, sars, 10)
+        train(p_model, sars, 1)
         post_training_loss = loss(p_model, sars)
         @printf(
-            "Average Rewards: %8.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f\n",
+            "Average Rewards: %10.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f\n",
             mean(rewards),
             pre_training_loss / 1_000,
             post_training_loss / 1_000,
