@@ -34,11 +34,10 @@ struct SARS
     f :: Bool
 end
 
-function loss(p_model, sars)
-    average_q = mean(sars.q for sars in sars)
+function loss(p_model, baseline, sars)
     -sum(
         map(sars) do sars
-            (sars.q - average_q) * log(p_model(sars.s)[sars.a + 1])
+            (sars.q - baseline) * log(p_model(sars.s)[sars.a + 1])
         end
     )
 end
@@ -79,9 +78,9 @@ end
 
 const default_optimizer = NADAM()
 
-function train(p_model, sars, epochs, optimizer=default_optimizer)
+function train(p_model, baseline, sars, epochs, optimizer=default_optimizer)
     for epoch in 1:epochs
-        Flux.train!((sars) -> loss(p_model, sars), Flux.params(p_model), [(sars,)], optimizer)
+        Flux.train!((sars) -> loss(p_model, baseline, sars), Flux.params(p_model), [(sars,)], optimizer)
     end
 end
 
@@ -92,21 +91,27 @@ function run()
     policy = Policy(p_model)
     rewards = Float32[]
     losses = Float32[]
+    baseline_memory = Float32[]
     for cycle in 1:3_000
         @printf("%4d - ", cycle)
         sars, new_rewards = run_episodes(1, policy, render_env=cycle % 100 == 0)
+        prepend!(baseline_memory, (sars.q for sars in sars))
+        baseline_memory = truncate(baseline_memory, 10_000)
         rewards = truncate(vcat(new_rewards, rewards), 100)
-        pre_training_loss = loss(p_model, sars)
+        baseline = mean(baseline_memory)
+        pre_training_loss = loss(p_model, baseline, sars)
         pushfirst!(losses, pre_training_loss.data)
         losses = truncate(losses, 100)
-        train(p_model, sars, 1)
-        post_training_loss = loss(p_model, sars)
+        train(p_model, baseline, sars, 1)
+        post_training_loss = loss(p_model, baseline, sars)
         @printf(
-            "Average Rewards: %10.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f\n",
+            "Average Rewards: %10.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f    Baseline: %8.3f %8d\n",
             mean(rewards),
             pre_training_loss / 1_000,
             post_training_loss / 1_000,
-            mean(losses) / 1_000)
+            mean(losses) / 1_000,
+            baseline,
+            length(baseline_memory))
     end
 end
 
