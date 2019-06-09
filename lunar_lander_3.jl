@@ -16,10 +16,12 @@ function make_p_model(hidden_layer_size=100)
         softmax)
 end
 
-struct Policy <: AbstractPolicy end
+struct Policy <: AbstractPolicy
+    p_model
+end
 
 function action(policy::Policy, r, s, A)
-    rand(A)
+    sample(actions, Weights(policy.p_model(s)))
 end
 
 struct SARS
@@ -31,10 +33,13 @@ struct SARS
     f :: Bool
 end
 
-function loss()
-    # TODO
+function loss(p_model, sars)
+    -sum(
+        map(sars) do sars
+            sars.q * log(p_model(sars.s)[sars.a])
+        end
+    )
 end
-
 
 function run_episodes(n_episodes, policy; render_env=true, discount_factor=0.9)
     function add_q_to_sars(sars)
