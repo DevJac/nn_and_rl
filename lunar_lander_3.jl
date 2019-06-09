@@ -34,9 +34,10 @@ struct SARS
 end
 
 function loss(p_model, sars)
+    # This formula is not intuitive to me, be watchful of bugs with this formula.
     -sum(
-        map(sars) do sars
-            sars.q * log(p_model(sars.s)[sars.a])
+        map(sars) do sar
+            sar.q * log(p_model(sar.s)[sar.a + 1])
         end
     )
 end
@@ -75,4 +76,26 @@ function run_episodes(n_episodes, policy; render_env=true, discount_factor=0.9)
     all_sars, episode_rewards
 end
 
+const default_optimizer = NADAM()
+
+function train(p_model, sars, epochs, optimizer=default_optimizer)
+    for epoch in 1:epochs
+        Flux.train!((sars) -> loss(p_model, sars), Flux.params(p_model), [(sars,)], optimizer)
+    end
+end
+
+function run()
+    p_model = make_p_model()
+    policy = Policy(p_model)
+    for cycle in 1:30
+        println(cycle)
+        sars, rewards = run_episodes(10, policy)
+        train(p_model, sars, 10)
+    end
+end
+
 end  # end module
+
+if !isinteractive()
+    LunarLander3.run()
+end
