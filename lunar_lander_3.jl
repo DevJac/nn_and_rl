@@ -2,6 +2,7 @@ module LunarLander3
 
 using Flux
 using OpenAIGym
+using Printf
 import Reinforce: action
 
 const env = GymEnv(:LunarLander, :v2)
@@ -36,13 +37,14 @@ end
 function loss(p_model, sars)
     # This formula is not intuitive to me, be watchful of bugs with this formula.
     -sum(
-        map(sars) do sar
-            sar.q * log(p_model(sar.s)[sar.a + 1])
+        map(sars) do sars
+            sars.q * log(p_model(sars.s)[sars.a + 1])
         end
     )
 end
 
 function run_episodes(n_episodes, policy; render_env=true, discount_factor=0.9)
+
     function add_q_to_sars(sars)
         sars_with_q = SARS[]
         for i in 1:length(sars)
@@ -58,14 +60,13 @@ function run_episodes(n_episodes, policy; render_env=true, discount_factor=0.9)
         end
         sars_with_q
     end
+
     all_sars = SARS[]
     episode_rewards = Float32[]
     for episode in 1:n_episodes
         episode_sars = []
         episode_reward = run_episode(env, policy) do (s, a, r, s_next)
-            s = convert(Array, s)
-            s_next = convert(Array, s_next)
-            push!(episode_sars, (s, a, r, s_next, finished(env)))
+            push!(episode_sars, (convert(Array, s), a, r, convert(Array, s_next), finished(env)))
             if render_env
                 render(env)
             end
@@ -84,13 +85,28 @@ function train(p_model, sars, epochs, optimizer=default_optimizer)
     end
 end
 
+truncate(a, n) = a[1:min(n, end)]
+
 function run()
     p_model = make_p_model()
     policy = Policy(p_model)
+    rewards = Float32[]
+    losses = Float32[]
     for cycle in 1:30
-        println(cycle)
-        sars, rewards = run_episodes(10, policy)
+        @printf("%4d - ", cycle)
+        sars, new_rewards = run_episodes(10, policy)
+        rewards = truncate(vcat(new_rewards, rewards), 100)
+        pre_training_loss = loss(p_model, sars)
+        pushfirst!(losses, pre_training_loss.data)
+        losses = truncate(losses, 100)
         train(p_model, sars, 10)
+        post_training_loss = loss(p_model, sars)
+        @printf(
+            "Average Rewards: %8.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f\n",
+            mean(rewards),
+            pre_training_loss / 1_000,
+            post_training_loss / 1_000,
+            mean(losses) / 1_000)
     end
 end
 
