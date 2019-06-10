@@ -82,6 +82,8 @@ function run_episodes(n_episodes, policy; render_env=true, discount_factor=0.9)
                 render(env)
             end
         end
+        @assert !any(sars[5] for sars in episode_sars[1:end-1])
+        @assert episode_sars[end][5]
         push!(episode_rewards, sum(r for (_, _, r, _, _) in episode_sars))
         append!(all_sars, add_q_to_sars(episode_sars))
     end
@@ -127,7 +129,7 @@ function run()
     for cycle in 1:3_000
         @printf("%4d - ", cycle)
         new_sars, new_rewards = run_episodes(1, policy, render_env=false)
-        memory = truncate(vcat(new_sars, memory), 20_000)
+        memory = truncate(vcat(new_sars, memory), 15_000)
         rewards = truncate(vcat(new_rewards, rewards), 100)
         v_loss = train_v_model(v_model, memory, 10)
         pre_training_loss = loss(p_model, v_model, new_sars)
