@@ -127,7 +127,7 @@ function run()
     for cycle in 1:3_000
         @printf("%4d - ", cycle)
         new_sars, new_rewards = run_episodes(1, policy, render_env=false)
-        memory = truncate(vcat(new_sars, memory), 25_000)
+        memory = truncate(vcat(new_sars, memory), 20_000)
         rewards = truncate(vcat(new_rewards, rewards), 100)
         v_loss = train_v_model(v_model, memory, 10)
         pre_training_loss = loss(p_model, v_model, new_sars)
