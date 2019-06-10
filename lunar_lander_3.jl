@@ -54,7 +54,7 @@ function loss(p_model, v_model, sars)
     )
 end
 
-function run_episodes(n_episodes, policy; render_env=true, discount_factor=0.9)
+function run_episodes(n_episodes, policy; render_env=true, discount_factor=0.997)
 
     function add_q_to_sars(sars)
         sars_with_q = SARS[]
