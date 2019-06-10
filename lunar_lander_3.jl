@@ -46,10 +46,10 @@ struct SARS
     f :: Bool
 end
 
-function loss(p_model, v_model, sars)
+function loss(p_model, v_model, sars, entropy_bonus=1.0)
     -sum(
         map(sars) do sars
-            (sars.q - v_model(sars.s)[1]) * log(p_model(sars.s)[sars.a + 1])
+            (sars.q - v_model(sars.s)[1]) * log(p_model(sars.s)[sars.a + 1]) + entropy_bonus * entropy(p_model(sars.s))
         end
     )
 end
