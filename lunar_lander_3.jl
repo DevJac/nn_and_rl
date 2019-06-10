@@ -17,6 +17,13 @@ function make_p_model(hidden_layer_size=100)
         softmax)
 end
 
+function make_v_model(hidden_layer_size=100)
+    Chain(
+        Dense(8, hidden_layer_size, leakyrelu),
+        Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
+        Dense(hidden_layer_size, 1, identity))
+end
+
 struct Policy <: AbstractPolicy
     p_model
 end
@@ -34,10 +41,10 @@ struct SARS
     f :: Bool
 end
 
-function loss(p_model, baseline, sars)
+function loss(p_model, v_model, sars)
     -sum(
         map(sars) do sars
-            (sars.q - baseline) * log(p_model(sars.s)[sars.a + 1])
+            (sars.q - v_model(sars.s)[1]) * log(p_model(sars.s)[sars.a + 1])
         end
     )
 end
@@ -76,11 +83,24 @@ function run_episodes(n_episodes, policy; render_env=true, discount_factor=0.9)
     all_sars, episode_rewards
 end
 
-const default_optimizer = NADAM()
+const default_p_model_optimizer = NADAM()
 
-function train(p_model, baseline, sars, epochs, optimizer=default_optimizer)
+function train_p_model(p_model, v_model, sars, epochs, optimizer=default_p_model_optimizer)
     for epoch in 1:epochs
-        Flux.train!((sars) -> loss(p_model, baseline, sars), Flux.params(p_model), [(sars,)], optimizer)
+        Flux.train!((sars) -> loss(p_model, v_model, sars), Flux.params(p_model), [(sars,)], optimizer)
+    end
+end
+
+const default_v_model_optimizer = NADAM()
+
+function train_v_model(v_model, sars, epochs, optimizer=default_v_model_optimizer)
+
+    loss(x, y) = Flux.mse(v_model(x), y)
+
+    x = hcat((sars.s for sars in sars)...)
+    y = collect(sars.q for sars in sars)
+    for epoch in 1:epochs
+        Flux.train!(loss, Flux.params(v_model), [(x, y)], optimizer)
     end
 end
 
@@ -88,30 +108,28 @@ truncate(a, n) = a[1:min(n, end)]
 
 function run()
     p_model = make_p_model()
+    v_model = make_v_model()
     policy = Policy(p_model)
+    memory = SARS[]
     rewards = Float32[]
     losses = Float32[]
-    baseline_memory = Float32[]
     for cycle in 1:3_000
         @printf("%4d - ", cycle)
-        sars, new_rewards = run_episodes(1, policy, render_env=cycle % 100 == 0)
-        prepend!(baseline_memory, (sars.q for sars in sars))
-        baseline_memory = truncate(baseline_memory, 10_000)
+        new_sars, new_rewards = run_episodes(1, policy, render_env=cycle % 5 == 0)
+        memory = truncate(vcat(new_sars, memory), 100_000)
         rewards = truncate(vcat(new_rewards, rewards), 100)
-        baseline = mean(baseline_memory)
-        pre_training_loss = loss(p_model, baseline, sars)
+        train_v_model(v_model, sample(memory, 1000), 10)
+        pre_training_loss = loss(p_model, v_model, new_sars)
         pushfirst!(losses, pre_training_loss.data)
         losses = truncate(losses, 100)
-        train(p_model, baseline, sars, 1)
-        post_training_loss = loss(p_model, baseline, sars)
+        train_p_model(p_model, v_model, new_sars, 1)
+        post_training_loss = loss(p_model, v_model, new_sars)
         @printf(
-            "Average Rewards: %10.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f    Baseline: %8.3f %8d\n",
+            "Average Rewards: %10.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f\n",
             mean(rewards),
             pre_training_loss / 1_000,
             post_training_loss / 1_000,
-            mean(losses) / 1_000,
-            baseline,
-            length(baseline_memory))
+            mean(losses) / 1_000)
     end
 end
 
