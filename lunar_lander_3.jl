@@ -1,5 +1,8 @@
+using Flux
+
 module LunarLander3
 
+using BSON: @save, @load
 using Flux
 using OpenAIGym
 using Printf
@@ -111,7 +114,11 @@ end
 truncate(a, n) = a[1:min(n, end)]
 
 function run()
-    p_model = make_p_model()
+    if isfile("model.bson")
+        @load "model.bson" p_model
+    else
+        p_model = make_p_model()
+    end
     v_model = make_v_model()
     policy = Policy(p_model)
     memory = SARS[]
@@ -127,6 +134,7 @@ function run()
         pushfirst!(losses, pre_training_loss.data)
         losses = truncate(losses, 100)
         train_p_model(p_model, v_model, new_sars, 1)
+        @save "model.bson" p_model
         post_training_loss = loss(p_model, v_model, new_sars)
         @printf(
             "Average Rewards: %10.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f    Memory: %8d    V-Loss: %8.3f\n",
