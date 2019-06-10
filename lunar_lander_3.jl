@@ -13,6 +13,7 @@ function make_p_model(hidden_layer_size=100)
     Chain(
         Dense(8, hidden_layer_size, leakyrelu),
         Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
+        Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
         Dense(hidden_layer_size, 4, identity),
         softmax)
 end
@@ -20,6 +21,7 @@ end
 function make_v_model(hidden_layer_size=100)
     Chain(
         Dense(8, hidden_layer_size, leakyrelu),
+        Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
         Dense(hidden_layer_size, hidden_layer_size, leakyrelu),
         Dense(hidden_layer_size, 1, identity))
 end
@@ -97,11 +99,13 @@ function train_v_model(v_model, sars, epochs, optimizer=default_v_model_optimize
 
     loss(x, y) = Flux.mse(v_model(x), y)
 
-    x = hcat((sars.s for sars in sars)...)
-    y = collect(sars.q for sars in sars)
     for epoch in 1:epochs
+        s = sample(sars, 1000)
+        x = hcat((sars.s for sars in s)...)
+        y = collect(sars.q for sars in s)
         Flux.train!(loss, Flux.params(v_model), [(x, y)], optimizer)
     end
+    return loss(hcat((sars.s for sars in sars)...), collect(sars.q for sars in sars))
 end
 
 truncate(a, n) = a[1:min(n, end)]
@@ -115,21 +119,23 @@ function run()
     losses = Float32[]
     for cycle in 1:3_000
         @printf("%4d - ", cycle)
-        new_sars, new_rewards = run_episodes(1, policy, render_env=cycle % 5 == 0)
-        memory = truncate(vcat(new_sars, memory), 100_000)
+        new_sars, new_rewards = run_episodes(1, policy, render_env=false)
+        memory = truncate(vcat(new_sars, memory), 25_000)
         rewards = truncate(vcat(new_rewards, rewards), 100)
-        train_v_model(v_model, sample(memory, 1000), 10)
+        v_loss = train_v_model(v_model, memory, 10)
         pre_training_loss = loss(p_model, v_model, new_sars)
         pushfirst!(losses, pre_training_loss.data)
         losses = truncate(losses, 100)
         train_p_model(p_model, v_model, new_sars, 1)
         post_training_loss = loss(p_model, v_model, new_sars)
         @printf(
-            "Average Rewards: %10.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f\n",
+            "Average Rewards: %10.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f    Memory: %8d    V-Loss: %8.3f\n",
             mean(rewards),
             pre_training_loss / 1_000,
             post_training_loss / 1_000,
-            mean(losses) / 1_000)
+            mean(losses) / 1_000,
+            length(memory),
+            v_loss / 1_000)
     end
 end
 
