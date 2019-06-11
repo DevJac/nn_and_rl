@@ -129,7 +129,7 @@ function run()
     rewards = Float32[]
     losses = Float32[]
     memory_length = 10_000
-    for cycle in 1:3_000
+    for cycle in Iterators.countfrom(1)
         @printf("%4d - ", cycle)
         new_sars, new_rewards = run_episodes(1, policy, render_env=false)
         memory = truncate(vcat(new_sars, memory), memory_length)
