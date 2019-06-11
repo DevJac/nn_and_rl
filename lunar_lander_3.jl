@@ -116,8 +116,10 @@ end
 truncate(a, n) = a[1:min(n, end)]
 
 function run()
-    if isfile("model.bson")
-        @load "model.bson" p_model
+    if isfile("model.0.bson")
+        @load "model.0.bson" p_model
+    elseif isfile("model.1.bson")
+        @load "model.1.bson" p_model
     else
         p_model = make_p_model()
     end
@@ -138,7 +140,7 @@ function run()
         losses = truncate(losses, 100)
         if length(memory) == memory_length
             train_p_model(p_model, v_model, new_sars, 1)
-            @save "model.bson" p_model
+            @save @sprintf("model.%d.bson", cycle % 2) p_model
         end
         post_training_loss = loss(p_model, v_model, new_sars)
         @printf(
