@@ -126,17 +126,20 @@ function run()
     memory = SARS[]
     rewards = Float32[]
     losses = Float32[]
+    memory_length = 10_000
     for cycle in 1:3_000
         @printf("%4d - ", cycle)
         new_sars, new_rewards = run_episodes(1, policy, render_env=false)
-        memory = truncate(vcat(new_sars, memory), 15_000)
+        memory = truncate(vcat(new_sars, memory), memory_length)
         rewards = truncate(vcat(new_rewards, rewards), 100)
         v_loss = train_v_model(v_model, memory, 10)
         pre_training_loss = loss(p_model, v_model, new_sars)
         pushfirst!(losses, pre_training_loss.data)
         losses = truncate(losses, 100)
-        train_p_model(p_model, v_model, new_sars, 1)
-        @save "model.bson" p_model
+        if length(memory) == memory_length
+            train_p_model(p_model, v_model, new_sars, 1)
+            @save "model.bson" p_model
+        end
         post_training_loss = loss(p_model, v_model, new_sars)
         @printf(
             "Average Rewards: %10.3f    Loss: %8.3f -> %8.3f    Average Loss: %8.3f    Memory: %8d    V-Loss: %8.3f\n",
